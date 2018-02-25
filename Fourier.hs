@@ -1,5 +1,7 @@
+module Fourier where
 
 import Data.Complex
+import Data.Array
 import Data.Ratio
 import Control.Applicative
 import Data.Foldable (fold)
@@ -33,6 +35,9 @@ signalToList s = do
 
 signalToList' :: (SignalLike s) => s a -> [a]
 signalToList' = fromJust . signalToList
+
+signalLength :: (SignalLike s) => s a -> Int
+signalLength s = fromJust (stop s) - fromJust (start s) + 1
 
 instance (Num n) => SignalLike ((->) n) where
   start _ = Nothing
@@ -114,10 +119,44 @@ circleSignal f t = cis (2*pi*f*t)
 dft :: (SignalLike s, RealFloat a) =>
   s (Complex a) -> Signal (Complex a)
 dft s = Signal
-  { signalStart  = Just 0
-  , signalStop   = Just (n-1)
+  { signalStart  = start s
+  , signalStop   = stop s
   , signalSample = \f -> multSum s (circle f)
   }
   where
-    n = fromJust (stop s) - fromJust (start s) + 1
+    n = signalLength s
     circle f = circleSignal (fromIntegral f / fromIntegral n)
+
+symmetrice :: (SignalLike s) => s a -> Signal a
+symmetrice s = Signal
+  { signalStart  = Just $ -(n-2)
+  , signalStop   = Just $ n-1
+  , signalSample = \i -> sample s $ a + (abs i `mod` n)
+  }
+  where
+    n = signalLength s
+    a = fromJust (start s)
+
+-- Discrete Cosine Transform (variant DCT-I),
+-- inefficiently implemented using dft
+dct :: (SignalLike s, RealFloat a) => s a -> Signal a
+dct s = fmap ((/2) . realPart) $
+  (dft $ symmetrice (fmap (:+ 0) s)) {signalStart = Just 0}
+
+dct2d :: (RealFloat a) =>
+  (Int, Int) -> ((Int, Int) -> a) -> (Int, Int) -> a
+dct2d (w, h) f = f''
+  where
+    f'0 (x, y) =
+      sample (dct $ Signal (Just 0) (Just (w-1)) (\i -> f (i, y))) x
+    arr = array ((0, 0), (w-1, h-1))
+      [ ((x, y), f'0 (x, y)) | x <- [0..w-1], y <- [0..h-1] ]
+    f' = (arr !)
+    f'' (x, y) =
+      sample (dct $ Signal (Just 0) (Just (h-1)) (\i -> f (x, i))) y
+
+-- remove the scaling from apllying dct twice
+unscaleDct :: (SignalLike s, Fractional a) => s a -> s a
+unscaleDct s = fmap (*scale) s
+  where
+    scale = 2 / fromIntegral (signalLength s - 1)
