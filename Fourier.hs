@@ -153,9 +153,9 @@ dct2d (w, h) f = f''
       [ ((x, y), f'0 (x, y)) | x <- [0..w-1], y <- [0..h-1] ]
     f' = (arr !)
     f'' (x, y) =
-      sample (dct $ Signal (Just 0) (Just (h-1)) (\i -> f (x, i))) y
+      sample (dct $ Signal (Just 0) (Just (h-1)) (\i -> f' (x, i))) y
 
--- remove the scaling from apllying dct twice
+-- remove the scaling from applying dct twice
 unscaleDct :: (SignalLike s, Fractional a) => s a -> s a
 unscaleDct s = fmap (*scale) s
   where
